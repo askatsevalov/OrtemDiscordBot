@@ -4,6 +4,7 @@ using Discord.Commands;
 using Discord.WebSocket;
 using System;
 using System.Collections.Generic;
+using System.Configuration;
 using System.Diagnostics;
 using System.Linq;
 using System.Reflection;
@@ -223,6 +224,39 @@ namespace OrtemDiscordBot
             foreach (SocketUser p in players) str_players.Append($"{p.Username}\n");
             await Program.mafia.SendMessageAsync(str_players.ToString());
             //===========
+        }
+    }
+
+    [Group("easter")]
+    public class EasterModule : ModuleBase<SocketCommandContext>
+    {
+        Configuration config = ConfigurationManager.OpenExeConfiguration(Assembly.GetExecutingAssembly().Location);
+        
+
+        [Command("battle")]
+        [Summary("Performs an egg battle between two players.")]
+        public async Task EasterBattleAsync([Summary("User to battle with.")] IUser user)
+        {
+            if (Context.User == user) { await Context.Channel.SendMessageAsync("Ты не можешь биться сам с собой."); return; }
+            IUser winner = Context.User.Discriminator == Program.Lera.Discriminator || user.Discriminator == Program.Lera.Discriminator ? Program.Lera 
+                : ((new Random()).Next(0, 2) == 0 ? Context.User : user);
+            IUser loser = winner.Discriminator == user.Discriminator ? Context.User : user;
+            int wscore;
+            config.AppSettings.Settings[$"score{winner.Discriminator}"].Value = (wscore = Convert.ToInt32(config.AppSettings.Settings[$"score{winner.Discriminator}"].Value) + 1).ToString();
+            config.Save();
+            ConfigurationManager.RefreshSection("appSettings");
+            string lscore = config.AppSettings.Settings[$"score{loser.Discriminator}"].Value;
+            await Context.Channel.SendMessageAsync($"Яйцо {winner.Mention} оказалось крепче, чем у {loser.Mention}!\nТекущий счет: {winner.Username} - {wscore}, {loser.Username} - {lscore}");
+        }
+
+        [Command("score")]
+        [Summary("Demonstrates easter score of each member of guild.")]
+        public async Task EasterScoreAsync()
+        {
+            StringBuilder ScoreString = new StringBuilder("Общий счет пасхальной битвы:\n");
+            foreach (IUser u in Context.Guild.Users)
+                ScoreString.Append($"{u.Username} - {config.AppSettings.Settings[$"score{u.Discriminator}"].Value}\n");
+            await Context.Channel.SendMessageAsync(ScoreString.ToString());
         }
     }
 }
