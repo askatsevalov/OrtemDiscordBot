@@ -24,6 +24,7 @@ namespace OrtemDiscordBot
         internal static SocketVoiceChannel govor;
         internal static SocketTextChannel pisal;
         internal static SocketTextChannel test;
+        internal static SocketTextChannel home;
         internal static SocketTextChannel mafia;
 
         internal static SocketUser Ruslan;
@@ -57,6 +58,7 @@ namespace OrtemDiscordBot
                 govor = client.GetChannel(Convert.ToUInt64(config.Get("govor_id"))) as SocketVoiceChannel;
                 pisal = client.GetChannel(Convert.ToUInt64(config.Get("pisal_id"))) as SocketTextChannel;
                 test = client.GetChannel(Convert.ToUInt64(config.Get("test_id"))) as SocketTextChannel;
+                home = client.GetChannel(Convert.ToUInt64(config.Get("home_id"))) as SocketTextChannel;
                 mafia = client.GetChannel(Convert.ToUInt64(config.Get("mafia_id"))) as SocketTextChannel;
 
                 Ruslan = client.GetUser(Convert.ToUInt64(config.Get("ruslan_id")));
@@ -74,36 +76,25 @@ namespace OrtemDiscordBot
             client.UserVoiceStateUpdated += async (SocketUser user, SocketVoiceState before, SocketVoiceState after) =>
             {
                 if (user.IsBot) return;
-                if (govor == after.VoiceChannel)
-                    await test.SendMessageAsync($"$salam {user.Discriminator}");
-                else if (govor == before.VoiceChannel)
-                    await test.SendMessageAsync($"$leave");
+                if (after.VoiceChannel != null && before.VoiceChannel == null)
+                    await (after.VoiceChannel.Guild.Id == guild8.Id ? test : home).SendMessageAsync($"$salam {user.Discriminator}");
+                else if (before.VoiceChannel != null && after.VoiceChannel == null)
+                    await (before.VoiceChannel.Guild.Id == guild8.Id ? test : home).SendMessageAsync($"$leave");
             };
             client.MessageReceived += async (SocketMessage msg) =>
             {
                 if (msg.Author.IsBot && msg.Content.StartsWith('$')) await msg.DeleteAsync();
             };
 
-            await Task.Delay(-1);
-        }
-
-        private Process CreateStream(string path) => Process.Start(new ProcessStartInfo
-        {
-            FileName = "ffmpeg",
-            Arguments = $"-hide_banner -loglevel panic -i \"{path}\" -ac 2 -f s16le -ar 48000 pipe:1",
-            UseShellExecute = false,
-            RedirectStandardOutput = true
-        });
-
-        private async Task PlaySoundAsync(IAudioClient client, string path)
-        {
-            using (var ffmpeg = CreateStream(path))
-            using (var output = ffmpeg.StandardOutput.BaseStream)
-            using (var discord = client.CreatePCMStream(AudioApplication.Mixed))
+            client.ReactionAdded += async (Cacheable<IUserMessage, ulong> cache, ISocketMessageChannel channel, SocketReaction reaction) =>
             {
-                try { await output.CopyToAsync(discord); }
-                finally { await discord.FlushAsync(); }
-            }
+                if (channel == mafia && reaction.Message.Value.Author.IsBot)
+                {
+
+                }
+            };
+
+            await Task.Delay(-1);
         }
     }
 }

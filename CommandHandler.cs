@@ -1,8 +1,10 @@
 ﻿using Discord;
 using Discord.Audio;
 using Discord.Commands;
+using Discord.Rest;
 using Discord.WebSocket;
 using System;
+using System.Collections;
 using System.Collections.Generic;
 using System.Configuration;
 using System.Diagnostics;
@@ -68,13 +70,13 @@ namespace OrtemDiscordBot
         [Summary("Salams user when he connects to voice channel.")]
         public async Task SalamAsync([Summary("Discriminator of the user")]string discr)
         {
-            SocketVoiceChannel ch = Program.govor;
+            SocketVoiceChannel ch = Context.Guild.VoiceChannels.FirstOrDefault();
             IAudioClient audioClient = await ch.ConnectAsync();
-
+            discr = Context.Guild.Id == Program.guild8.Id ? discr : "";
             Process pr = Process.Start(new ProcessStartInfo
             {
                 FileName = "ffmpeg",
-                Arguments = $"-hide_banner -loglevel panic -i \"audio/salam_{discr}.mp3\" -ac 2 -f s16le -ar 48000 pipe:1",
+                Arguments = $"-hide_banner -loglevel panic -i \"audio/salam{discr}.mp3\" -ac 2 -f s16le -ar 48000 pipe:1",
                 UseShellExecute = false,
                 RedirectStandardOutput = true
             });
@@ -93,7 +95,7 @@ namespace OrtemDiscordBot
         [Summary("Says goodbye to user when he disconnects from voice channel.")]
         public async Task LeaveAsync()
         {
-            SocketVoiceChannel ch = Program.govor;
+            SocketVoiceChannel ch = Context.Guild.VoiceChannels.FirstOrDefault();
             IAudioClient audioClient = await ch.ConnectAsync();
 
             Process pr = Process.Start(new ProcessStartInfo
@@ -130,6 +132,12 @@ namespace OrtemDiscordBot
         IUser PolicemanPlayer;
         IUser WhorePlayer;
         //=====
+
+        //Player States
+        IUser Dead;
+        IUser Healed;
+        IUser Fucked;
+        //=============
 
         //Instructions
         string MafiaInstruction = @"Ты Мафия!\n
@@ -219,33 +227,104 @@ namespace OrtemDiscordBot
             //========================================
 
             //Let's begin
-            CurrentStage = "Начало";
+            CurrentStage = "Killing";
             StringBuilder str_players = new StringBuilder("Начинаем игру Мафия. Список игроков:\n");
             foreach (SocketUser p in players) str_players.Append($"{p.Username}\n");
             await Program.mafia.SendMessageAsync(str_players.ToString());
+            await Program.mafia.SendMessageAsync("Ожидаем ход мафии...");
             //===========
+        }
+
+        [Command("kill")]
+        [Summary("Kills a player with given discriminator.")]
+        public async Task MafiaKillAsync([Summary("Discriminator of the user")]string discr)
+        {
+            if (Program.guild8.Channels.Where(x => x.Id.Equals(Context.Channel.Id)).Count() != 0 || MafiaPlayers.Where(x => x.Id.Equals(Context.User.Id)).Count() == 0 || CurrentStage != "Killing") return;
+            Dead = players.Where(x => x.Discriminator.Equals(discr)).FirstOrDefault();
+            if (Dead == null ||(MafiaPlayers.Count == 1 && MafiaPlayers.FirstOrDefault().Discriminator.Equals(Dead.Discriminator)))
+            {
+                await Context.Channel.SendMessageAsync("Неверный дискриминатор!");
+                return;
+            }
+            CurrentStage = "Healing";
+            await Program.mafia.SendMessageAsync("Мафия сделала свой выбор.");
+            await Program.mafia.SendMessageAsync("Ожидаем ход доктора...");
+        }
+
+        [Command("heal")]
+        [Summary("Heals a player with given discriminator.")]
+        public async Task MafiaHealAsync([Summary("Discriminator of the user")]string discr)
+        {
+            if (Program.guild8.Channels.Where(x => x.Id.Equals(Context.Channel.Id)).Count() != 0 || MafiaPlayers.Where(x => x.Id.Equals(Context.User.Id)).Count() == 0 || CurrentStage != "Healing") return;
+            Healed = players.Where(x => x.Discriminator.Equals(discr)).FirstOrDefault();
+            if (Healed == null)
+            {
+                await Context.Channel.SendMessageAsync("Неверный дискриминатор!");
+                return;
+            }
+            if (Healed == Dead) Dead = null;
+            CurrentStage = "Fucking";
+            await Program.mafia.SendMessageAsync("Доктор сделал свой выбор.");
+            await Program.mafia.SendMessageAsync("Ожидаем ход куртизанки...");
+        }
+
+        [Command("fuck")]
+        [Summary("Fucks a player with given discriminator.")]
+        public async Task MafiaFuckAsync([Summary("Discriminator of the user")]string discr)
+        {
+            //if (Program.guild8.Channels.Where(x => x.Id.Equals(Context.Channel.Id)).Count() != 0 || MafiaPlayers.Where(x => x.Id.Equals(Context.User.Id)).Count() == 0 || CurrentStage != "Fucking") return;
+            Fucked = players.Where(x => x.Discriminator.Equals(discr)).FirstOrDefault();
+            if (Fucked == null)
+            {
+                await Context.Channel.SendMessageAsync("Неверный дискриминатор!");
+                return;
+            }
+            CurrentStage = "Voting";
+            await Program.mafia.SendMessageAsync("Куртизанка сделала свой выбор.");
+            var msg = await Program.mafia.SendMessageAsync("Объявляется голосование! Кого вы считаете мафией? Просьба выбирать только один вариант (временно)!");
+            foreach (IUser u in players)
+            {
+                GuildEmote em;
+                if (Program.guild8.Emotes.First(x => x.Name.Equals($"vote{u.Discriminator}")) == null) em = await Program.guild8.CreateEmoteAsync($"vote{u.Discriminator}", new Image(u.GetAvatarUrl()));
+                else em = Program.guild8.Emotes.First(x => x.Name.Equals($"vote{u.Discriminator}"));
+                await msg.AddReactionAsync(em);
+            }
+        }
+
+        [Command("vote")]
+        [Summary("Fucks a player with given discriminator.")]
+        public async Task MafiaVoteAsync()
+        {
+            if (Program.guild8.Channels.Where(x => x.Id.Equals(Context.Channel.Id)).Count() != 0 || MafiaPlayers.Where(x => x.Id.Equals(Context.User.Id)).Count() == 0 || CurrentStage != "Voting") return;
+            
         }
     }
 
-    [Group("easter")]
+        [Group("easter")]
     public class EasterModule : ModuleBase<SocketCommandContext>
     {
-        Configuration config = ConfigurationManager.OpenExeConfiguration(Assembly.GetExecutingAssembly().Location);
-        
+        private class UserScore
+        {
+            public UserScore(IUser u, int s) { user = u; score = s; }
+            public IUser user { get; set; }
+            public int score { get; set; }
+        }
+
+        Configuration config = ConfigurationManager.OpenExeConfiguration(Assembly.GetExecutingAssembly().Location);   
 
         [Command("battle")]
         [Summary("Performs an egg battle between two players.")]
         public async Task EasterBattleAsync([Summary("User to battle with.")] IUser user)
         {
             if (Context.User == user) { await Context.Channel.SendMessageAsync("Ты не можешь биться сам с собой."); return; }
-            IUser winner = Context.User.Discriminator == Program.Lera.Discriminator || user.Discriminator == Program.Lera.Discriminator ? Program.Lera 
-                : ((new Random()).Next(0, 2) == 0 ? Context.User : user);
+            IUser winner = (new Random()).Next(0, 2) == 0 ? Context.User : user;
             IUser loser = winner.Discriminator == user.Discriminator ? Context.User : user;
             int wscore;
-            config.AppSettings.Settings[$"score{winner.Discriminator}"].Value = (wscore = Convert.ToInt32(config.AppSettings.Settings[$"score{winner.Discriminator}"].Value) + 1).ToString();
+            if (config.AppSettings.Settings[$"score{winner.Discriminator}"] == null) config.AppSettings.Settings.Add($"score{winner.Discriminator}", "0");
+             config.AppSettings.Settings[$"score{winner.Discriminator}"].Value = (wscore = Convert.ToInt32(config.AppSettings.Settings[$"score{winner.Discriminator}"].Value) + 1).ToString();
             config.Save();
             ConfigurationManager.RefreshSection("appSettings");
-            string lscore = config.AppSettings.Settings[$"score{loser.Discriminator}"].Value;
+            string lscore = config.AppSettings.Settings[$"score{loser.Discriminator}"]?.Value ?? "0";
             await Context.Channel.SendMessageAsync($"Яйцо {winner.Mention} оказалось крепче, чем у {loser.Mention}!\nТекущий счет: {winner.Username} - {wscore}, {loser.Username} - {lscore}");
         }
 
@@ -253,9 +332,19 @@ namespace OrtemDiscordBot
         [Summary("Demonstrates easter score of each member of guild.")]
         public async Task EasterScoreAsync()
         {
+            List<UserScore> lst = new List<UserScore>();
             StringBuilder ScoreString = new StringBuilder("Общий счет пасхальной битвы:\n");
             foreach (IUser u in Context.Guild.Users)
-                ScoreString.Append($"{u.Username} - {config.AppSettings.Settings[$"score{u.Discriminator}"].Value}\n");
+                if (!u.IsBot)
+                {
+                    if (config.AppSettings.Settings[$"score{u.Discriminator}"] != null)
+                        lst.Add(new UserScore(u, Convert.ToInt32(config.AppSettings.Settings[$"score{u.Discriminator}"].Value)));
+                    else
+                        lst.Add(new UserScore(u, 0));
+                }
+            lst = lst.OrderByDescending(x => x.score).ToList();
+            foreach (UserScore us in lst)
+                    ScoreString.Append($"{us.user.Username} - {us.score}\n");
             await Context.Channel.SendMessageAsync(ScoreString.ToString());
         }
     }
