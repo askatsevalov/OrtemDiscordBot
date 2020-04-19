@@ -7,6 +7,7 @@ using System.Collections.Specialized;
 using Discord.Commands;
 using System.Diagnostics;
 using Discord.Audio;
+using Discord.Rest;
 
 namespace OrtemDiscordBot
 {
@@ -88,10 +89,10 @@ namespace OrtemDiscordBot
 
             client.ReactionAdded += async (Cacheable<IUserMessage, ulong> cache, ISocketMessageChannel channel, SocketReaction reaction) =>
             {
-                if (channel == mafia && reaction.Message.Value.Author.IsBot)
-                {
-
-                }
+                RestUserMessage msg = (RestUserMessage)(await channel.GetMessageAsync(reaction.MessageId));
+                if (msg != null && channel == mafia && msg.Author.IsBot)
+                    foreach (IEmote em in msg.Reactions.Keys)
+                        if (reaction.Emote.Name != em.Name) await msg.RemoveReactionAsync(em, reaction.User.Value);
             };
 
             await Task.Delay(-1);

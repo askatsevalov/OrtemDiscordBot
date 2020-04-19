@@ -9,6 +9,7 @@ using System.Collections.Generic;
 using System.Configuration;
 using System.Diagnostics;
 using System.Linq;
+using System.Net;
 using System.Reflection;
 using System.Text;
 using System.Threading.Tasks;
@@ -122,21 +123,21 @@ namespace OrtemDiscordBot
     {
         Random rnd = new Random();
 
-        List<SocketUser> players; //List of active (and alive) players
-        string CurrentStage; //Current stage of the game
+        static List<SocketUser> players; //List of active (and alive) players
+        static string CurrentStage; //Current stage of the game
 
         //Roles
-        List<IUser> MafiaPlayers = new List<IUser>();
-        List<IUser> CitizenPlayers = new List<IUser>();
-        IUser DoctorPlayer;
-        IUser PolicemanPlayer;
-        IUser WhorePlayer;
+        static List<IUser> MafiaPlayers = new List<IUser>();
+        static List<IUser> CitizenPlayers = new List<IUser>();
+        static IUser DoctorPlayer;
+        static IUser PolicemanPlayer;
+        static IUser WhorePlayer;
         //=====
 
         //Player States
-        IUser Dead;
-        IUser Healed;
-        IUser Fucked;
+        static IUser Dead;
+        static IUser Healed;
+        static IUser Fucked;
         //=============
 
         //Instructions
@@ -279,13 +280,37 @@ namespace OrtemDiscordBot
                 await Context.Channel.SendMessageAsync("Неверный дискриминатор!");
                 return;
             }
-            CurrentStage = "Voting";
+            CurrentStage = "Revealing";
             await Program.mafia.SendMessageAsync("Куртизанка сделала свой выбор.");
+            await Program.mafia.SendMessageAsync("Ожидаем ход полицейского...");
+        }
+
+        [Command("reveal")]
+        [Summary("Reveals a player with given discriminator.")]
+        public async Task MafiaRevealAsync([Summary("Discriminator of the user")]string discr)
+        {
+            if (Program.guild8.Channels.Where(x => x.Id.Equals(Context.Channel.Id)).Count() != 0 || MafiaPlayers.Where(x => x.Id.Equals(Context.User.Id)).Count() == 0 || CurrentStage != "Revealing") return;
+            IUser r = players.Where(x => x.Discriminator.Equals(discr)).FirstOrDefault();
+            if (r == null)
+            {
+                await Context.Channel.SendMessageAsync("Неверный дискриминатор!");
+                return;
+            }
+            await Context.Channel.SendMessageAsync(MafiaPlayers.Contains(r) ? $"Игрок {r.Username} - мафия!" : $"Игрок {r.Username} не мафия!");
+            CurrentStage = "Voting";
+            StringBuilder str_results = new StringBuilder("Результаты ночи:\n");
+            str_results.Append(Dead != null ? $"{Dead.Username} был убит.\n" : "Убитых не обнаруженно.\n");
+            str_results.Append(Fucked != null ? $"{Fucked.Username} был изнасилован.\n" : "Изнасилованных не обнаруженно.\n");
+            await Program.mafia.SendMessageAsync(str_results.ToString());
             var msg = await Program.mafia.SendMessageAsync("Объявляется голосование! Кого вы считаете мафией? Просьба выбирать только один вариант (временно)!");
             foreach (IUser u in players)
             {
                 GuildEmote em;
-                if (Program.guild8.Emotes.First(x => x.Name.Equals($"vote{u.Discriminator}")) == null) em = await Program.guild8.CreateEmoteAsync($"vote{u.Discriminator}", new Image(u.GetAvatarUrl()));
+                if (Program.guild8.Emotes.FirstOrDefault(x => x.Name.Equals($"vote{u.Discriminator}")) == null)
+                {
+                    using (WebClient webClient = new WebClient()) webClient.DownloadFile(new Uri(u.GetAvatarUrl()), $"emotes/vote{u.Discriminator}.jpg");
+                    em = await Program.guild8.CreateEmoteAsync($"vote{u.Discriminator}", new Image($"emotes/vote{u.Discriminator}.jpg"));
+                }
                 else em = Program.guild8.Emotes.First(x => x.Name.Equals($"vote{u.Discriminator}"));
                 await msg.AddReactionAsync(em);
             }
